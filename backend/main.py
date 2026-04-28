@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import requests
-import os
 from fastapi.middleware.cors import CORSMiddleware
+import requests
+import json
+import os
 
 app = FastAPI()
 
-# ✅ CORS (IMPORTANT for frontend)
+# ✅ CORS (allow frontend to connect)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,8 +16,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔐 Use ENV VARIABLE (Render safe way)
-GEMINI_API_KEY = os.getenv("AIzaSyAxA-UsMh5D1faCy6mVVPy2iLb31zeOP4o")
+# 🔐 Gemini API Key (Render ENV variable)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 class Input(BaseModel):
     text: str
@@ -26,19 +27,22 @@ class Input(BaseModel):
 def analyze(data: Input):
 
     prompt = f"""
-You are an AI safety classifier.
+You are a cybersecurity AI system.
 
-Return ONLY valid JSON like this:
+Classify the user input.
+
+Return ONLY valid JSON (no text, no explanation, no markdown):
+
 {{
-  "score": number between 0-100,
-  "status": "SAFE or BLOCKED"
+  "score": number between 0 and 100,
+  "status": "SAFE" or "BLOCKED"
 }}
 
 Rules:
-- BLOCKED = harmful, phishing, fraud, violence, malware
-- SAFE = normal queries
+- BLOCKED → phishing, hacking, malware, fraud, scams, illegal instructions
+- SAFE → educational, normal, harmless queries
 
-Text: {data.text}
+User Input: {data.text}
 """
 
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -52,14 +56,24 @@ Text: {data.text}
     })
 
     try:
+        # 🔥 Extract Gemini response text
         text_output = response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
-        # return clean JSON string
+        # 🧹 Clean response (remove ```json if present)
+        cleaned = text_output.strip().replace("```json", "").replace("```", "")
+
+        # 🔄 Convert to JSON
+        parsed = json.loads(cleaned)
+
         return {
-            "result": text_output
+            "result": parsed
         }
 
     except Exception as e:
         return {
-            "result": '{"score":50,"status":"UNKNOWN"}'
+            "result": {
+                "score": 50,
+                "status": "BLOCKED",
+                "error": "Parsing failed"
+            }
         }
